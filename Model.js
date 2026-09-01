@@ -1,0 +1,144 @@
+.pragma library
+
+var DEFAULT_HEATMAP_COLORS = ["#45475a", "#89b4fa", "#74c7ec", "#89dceb", "#cba6f7"]
+
+function emptyDetail() {
+  return {
+    membership: "",
+    billingCycleStart: "",
+    billingCycleEnd: "",
+    autoMessage: "",
+    apiMessage: "",
+    onDemand: false,
+    onDemandUsed: 0,
+    cursorPercent: 0,
+    otherPercent: 0,
+    tokensTotal: 0,
+    tokensToday: 0,
+    modelSplit: [],
+    cycleDaysUsed: 0,
+    cycleDaysTotal: 0,
+    cycleProgress: 0,
+    cursorColor: DEFAULT_HEATMAP_COLORS[2],
+    otherColor: DEFAULT_HEATMAP_COLORS[4]
+  }
+}
+
+function emptyData(error) {
+  return {
+    ok: false,
+    error: String(error || ""),
+    text: "",
+    cursorPercent: 0,
+    otherPercent: 0,
+    cycleDaysUsed: 0,
+    cycleDaysTotal: 0,
+    cycleProgress: 0,
+    detail: emptyDetail()
+  }
+}
+
+function parsePayload(raw) {
+  var text = String(raw || "").trim()
+  if (!text) return emptyData("No data")
+
+  try {
+    var json = JSON.parse(text)
+  } catch (e) {
+    return emptyData("Invalid response")
+  }
+
+  if (json.class === "error") {
+    return {
+      ok: false,
+      error: String(json.message || json.text || "Unavailable"),
+      text: String(json.text || ""),
+      cursorPercent: 0,
+      otherPercent: 0,
+      cycleDaysUsed: 0,
+      cycleDaysTotal: 0,
+      cycleProgress: 0,
+      detail: emptyDetail()
+    }
+  }
+
+  var detail = json.detail && typeof json.detail === "object" ? json.detail : emptyDetail()
+  if (!Array.isArray(detail.modelSplit)) detail.modelSplit = []
+
+  return {
+    ok: true,
+    error: "",
+    text: String(json.text || ""),
+    cursorPercent: parseInt(json.cursorPercent !== undefined ? json.cursorPercent : detail.cursorPercent, 10) || 0,
+    otherPercent: parseInt(json.otherPercent !== undefined ? json.otherPercent : detail.otherPercent, 10) || 0,
+    cycleDaysUsed: parseInt(json.cycleDaysUsed !== undefined ? json.cycleDaysUsed : detail.cycleDaysUsed, 10) || 0,
+    cycleDaysTotal: parseInt(json.cycleDaysTotal !== undefined ? json.cycleDaysTotal : detail.cycleDaysTotal, 10) || 0,
+    cycleProgress: Number(json.cycleProgress !== undefined ? json.cycleProgress : detail.cycleProgress) || 0,
+    detail: detail
+  }
+}
+
+function formatTokens(n) {
+  var v = Number(n) || 0
+  if (v >= 1e9) return (v / 1e9).toFixed(2) + "B"
+  if (v >= 1e6) return (v / 1e6).toFixed(2) + "M"
+  if (v >= 1e3) return (v / 1e3).toFixed(1) + "K"
+  return String(Math.round(v))
+}
+
+function modelLabel(name) {
+  return String(name || "")
+    .replace(/^cursor-/, "")
+    .replace(/-/g, " ")
+}
+
+function heatmapColors(accent) {
+  var accentColor = String(accent || DEFAULT_HEATMAP_COLORS[1])
+  return [
+    DEFAULT_HEATMAP_COLORS[0],
+    accentColor,
+    DEFAULT_HEATMAP_COLORS[2],
+    DEFAULT_HEATMAP_COLORS[3],
+    DEFAULT_HEATMAP_COLORS[4]
+  ]
+}
+
+function cycleColor(detail, palette) {
+  var colors = palette && palette.length ? palette : DEFAULT_HEATMAP_COLORS
+  if (detail && detail.cursorColor) return String(detail.cursorColor)
+  return colors[3] || colors[2]
+}
+
+function iconActive(data) {
+  if (!data || !data.ok) return false
+  return (data.cursorPercent || 0) > 0 || (data.otherPercent || 0) > 0
+}
+
+function barTooltip(data, loading) {
+  if (loading) return "Cursor usage"
+  if (!data || !data.ok) return data && data.error ? data.error : "Cursor usage"
+  if (data.text) return String(data.text).replace(/^[^\s]+\s*/, "").trim() || data.text
+  return data.cursorPercent + "% / " + data.otherPercent + "%"
+}
+
+function showTokens(detail) {
+  if (!detail || typeof detail !== "object") return false
+  return !!(detail.tokensTotal || detail.tokensToday)
+}
+
+function hasModelDetails(detail) {
+  if (!detail || typeof detail !== "object") return false
+  return (Array.isArray(detail.modelSplit) && detail.modelSplit.length > 0) || detail.onDemand === true
+}
+
+function cycleDaysLeft(data) {
+  var total = parseInt(data && data.cycleDaysTotal, 10) || 0
+  var used = parseInt(data && data.cycleDaysUsed, 10) || 0
+  return Math.max(0, total - used)
+}
+
+function cycleDaysLeftText(data, loading) {
+  if (loading) return "…"
+  var left = cycleDaysLeft(data)
+  return left === 1 ? "1 day" : left + " days"
+}
