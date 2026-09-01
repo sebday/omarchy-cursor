@@ -77,36 +77,14 @@ raise SystemExit(1)
 PY
 }
 
-token_from_pass() {
-    command -v pass >/dev/null 2>&1 || return 1
-    local value path
-    for path in omarchy/cursor/token evoshell/cursor/access-token; do
-        value="$(pass show "$path" 2>/dev/null || true)"
-        if [[ -n "$value" ]]; then
-            printf '%s' "$value"
-            return 0
-        fi
-    done
-    return 1
-}
-
 resolve_token() {
     local token=""
-    if [[ -n "${CURSOR_ACCESS_TOKEN:-}" ]]; then
-        printf '%s' "$CURSOR_ACCESS_TOKEN"
-        return 0
-    fi
     token="$(token_from_auth_json "$CURSOR_AUTH_JSON" || true)"
     if [[ -n "$token" ]]; then
         printf '%s' "$token"
         return 0
     fi
     token="$(token_from_state_db "$CURSOR_STATE_DB" || true)"
-    if [[ -n "$token" ]]; then
-        printf '%s' "$token"
-        return 0
-    fi
-    token="$(token_from_pass || true)"
     if [[ -n "$token" ]]; then
         printf '%s' "$token"
         return 0
@@ -193,9 +171,9 @@ cmd_status() {
 
     if [[ -z "$session_cookie" ]]; then
         if [[ -n "$token" ]]; then
-            json_error "󰁨 auth" "Cursor session token is invalid — sign in to Cursor again, or set a fresh CURSOR_ACCESS_TOKEN"
+            json_error "󰁨 auth" "Cursor session token is invalid — sign in to Cursor IDE or the Cursor CLI"
         else
-            json_error "󰁨 …" "Sign in to Cursor, or set CURSOR_ACCESS_TOKEN, or pass insert omarchy/cursor/token"
+            json_error "󰁨 …" "Sign in to Cursor IDE or the Cursor CLI"
         fi
         exit 0
     fi
@@ -218,7 +196,7 @@ cmd_status() {
     if echo "$response" | jq -e '.error' >/dev/null 2>&1; then
         local msg
         msg=$(echo "$response" | jq -r '.description // .error // "not authenticated"')
-        json_error "󰁨 auth" "$msg — sign in to Cursor again, or refresh CURSOR_ACCESS_TOKEN"
+        json_error "󰁨 auth" "$msg — sign in to Cursor IDE or the Cursor CLI"
         exit 0
     fi
 
