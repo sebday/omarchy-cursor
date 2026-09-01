@@ -32,10 +32,29 @@ Panel {
   readonly property int gaugeSize: Math.max(Style.space(96), Math.floor((usageContentWidth - gaugeSpacing) / 2))
   readonly property int usageBlockWidth: gaugeSize * 2 + gaugeSpacing
   readonly property int gaugeLabelFont: Math.max(Style.font.body, Math.round(gaugeSize * 0.22))
-  readonly property int cycleDaySpacing: Style.spacing.xs
+  readonly property int usageStatTileCount: (showTokens ? 2 : 0) + (cycleDaysTotal > 0 ? 1 : 0)
 
   property bool loading: true
   property var data: Model.parsePayload("")
+
+  property real shownCursorPercent: 0
+  property real shownOtherPercent: 0
+  property int usageCelebrateToken: 0
+
+  NumberAnimation {
+    id: cursorPercentAnim
+    target: root
+    property: "shownCursorPercent"
+    easing.type: Easing.OutCubic
+    onFinished: root.usageCelebrateToken++
+  }
+
+  NumberAnimation {
+    id: otherPercentAnim
+    target: root
+    property: "shownOtherPercent"
+    easing.type: Easing.OutCubic
+  }
 
   readonly property var detail: data.detail || Model.emptyDetail()
   readonly property bool hasData: data.ok === true
@@ -53,10 +72,46 @@ Panel {
   readonly property bool iconBusy: loading
   readonly property bool iconMuted: false
   readonly property string barTooltip: Model.barTooltip(data, loading)
+  readonly property string heroMeta: {
+    if (loading) return "Refreshing…"
+    if (isError) return data.error || "Unavailable"
+    if (detail.membership) return String(detail.membership)
+    if (hasData) return (data.cursorPercent || 0) + "% cursor · " + (data.otherPercent || 0) + "% other"
+    return ""
+  }
 
   function applyPayload(raw) {
     loading = false
     data = Model.parsePayload(raw)
+    syncAnimatedStats(false)
+  }
+
+  function syncAnimatedStats(fromZero) {
+    if (!hasData) {
+      cursorPercentAnim.stop()
+      otherPercentAnim.stop()
+      shownCursorPercent = 0
+      shownOtherPercent = 0
+      return
+    }
+
+    animateStat(cursorPercentAnim, "shownCursorPercent", data.cursorPercent || 0, fromZero)
+    animateStat(otherPercentAnim, "shownOtherPercent", data.otherPercent || 0, fromZero)
+  }
+
+  function animateStat(anim, propertyName, target, fromZero) {
+    var next = Number(target) || 0
+    var current = root[propertyName] || 0
+    if (!fromZero && Math.round(current) === Math.round(next)) {
+      root[propertyName] = next
+      return
+    }
+
+    anim.stop()
+    anim.from = fromZero ? 0 : current
+    anim.to = next
+    anim.duration = Math.min(900, Math.max(420, next * 10))
+    anim.start()
   }
 
   function refresh() {
@@ -111,7 +166,10 @@ Panel {
   Component.onCompleted: refresh()
 
   onOpenedChanged: if (opened) {
+    shownCursorPercent = 0
+    shownOtherPercent = 0
     refresh()
+    if (hasData) syncAnimatedStats(true)
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
@@ -139,18 +197,6 @@ Panel {
     running: true
     repeat: true
     onTriggered: root.refresh()
-  }
-
-
-  IpcHandler {
-    target: root.ipcTarget
-
-    function open(): void { root.openFromHotkey() }
-    function close(): void { root.close() }
-    function show(): void { root.openFromHotkey() }
-    function hide(): void { root.close() }
-    function toggle(): void { root.toggle() }
-    function refresh(): string { root.refresh(); return "ok" }
   }
 
   KeyboardPanel {
@@ -186,6 +232,25 @@ Panel {
           width: panelFlick.width
           spacing: Style.space(12)
 
+          PanelHero {
+            width: parent.width
+            title: "Cursor"
+            meta: root.heroMeta
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            iconOpacity: root.loading ? 0.7 : (root.iconError ? 1 : (root.iconActive ? 1 : 0.7))
+
+            iconComponent: Component {
+              Text {
+                text: "󰁨"
+                color: root.iconError ? root.urgent : root.cursorColor
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.display
+                opacity: 0.92
+              }
+            }
+          }
+
           Text {
             width: parent.width
             visible: root.isError
@@ -212,22 +277,18 @@ Panel {
             }
           }
 
-          PanelSectionHeader {
-            visible: !root.isError
-            width: parent.width
-            text: "USAGE"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-          }
-
           Row {
-            visible: !root.isError && root.showTokens
+            visible: !root.isError && (root.showTokens || root.cycleDaysTotal > 0)
             width: parent.width
             spacing: Style.space(8)
 
             PanelStatTile {
-              width: (parent.width - parent.spacing) / 2
-              value: root.loading ? "…" : Model.formatTokens(root.detail.tokensTotal)
+              visible: root.showTokens
+              width: root.usageStatTileCount > 0
+                ? (parent.width - parent.spacing * (root.usageStatTileCount - 1)) / root.usageStatTileCount
+                : parent.width
+              loading: root.loading
+              value: Model.formatTokens(root.detail.tokensTotal || 0)
               label: "tokens"
               foreground: root.foreground
               dim: root.dim
@@ -235,13 +296,37 @@ Panel {
             }
 
             PanelStatTile {
-              width: (parent.width - parent.spacing) / 2
-              value: root.loading ? "…" : Model.formatTokens(root.detail.tokensToday)
+              visible: root.showTokens
+              width: root.usageStatTileCount > 0
+                ? (parent.width - parent.spacing * (root.usageStatTileCount - 1)) / root.usageStatTileCount
+                : parent.width
+              loading: root.loading
+              value: Model.formatTokens(root.detail.tokensToday || 0)
               label: "today"
               valueColor: root.accent
               foreground: root.foreground
               dim: root.dim
               fontFamily: root.fontFamily
+            }
+
+            PanelStatTile {
+              visible: root.cycleDaysTotal > 0
+              width: root.usageStatTileCount > 0
+                ? (parent.width - parent.spacing * (root.usageStatTileCount - 1)) / root.usageStatTileCount
+                : parent.width
+              loading: root.loading
+              value: root.loading ? "…" : String(Model.cycleDaysLeft(root.data))
+              cycleSuffix: root.loading ? "" : (Model.cycleDaysLeft(root.data) === 1 ? "day left" : "days left")
+              label: ""
+              valueColor: root.cycleColor
+              foreground: root.foreground
+              dim: root.dim
+              fontFamily: root.fontFamily
+              showCycleChart: true
+              cycleDaysTotal: root.cycleDaysTotal
+              cycleDaysUsed: root.cycleDaysUsed
+              accent: root.accent
+              palette: root.palette
             }
           }
 
@@ -260,134 +345,36 @@ Panel {
                 width: parent.width
                 spacing: root.gaugeSpacing
 
-                Column {
+                UsageGauge {
                   width: root.gaugeSize
-                  spacing: Style.spacing.sm
-
-                  UsageGauge {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    percent: root.data.cursorPercent || 0
-                    gaugeColor: root.cursorColor
-                    loading: root.loading
-                    gaugeSize: root.gaugeSize
-                    labelFontSize: root.gaugeLabelFont
-                    foreground: root.foreground
-                    trackColor: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
-                    fontFamily: root.fontFamily
-                  }
-
-                  Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Cursor"
-                    color: root.cursorColor
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    font.bold: true
-                  }
+                  percent: root.shownCursorPercent
+                  gaugeColor: root.cursorColor
+                  title: "Cursor"
+                  titleColor: root.cursorColor
+                  loading: root.loading
+                  gaugeSize: root.gaugeSize
+                  labelFontSize: root.gaugeLabelFont
+                  foreground: root.foreground
+                  trackColor: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
+                  fontFamily: root.fontFamily
+                  celebrateToken: root.usageCelebrateToken
                 }
 
-                Column {
+                UsageGauge {
                   width: root.gaugeSize
-                  spacing: Style.spacing.sm
-
-                  UsageGauge {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    percent: root.data.otherPercent || 0
-                    gaugeColor: root.otherColor
-                    loading: root.loading
-                    gaugeSize: root.gaugeSize
-                    labelFontSize: root.gaugeLabelFont
-                    foreground: root.foreground
-                    trackColor: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
-                    fontFamily: root.fontFamily
-                  }
-
-                  Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Other"
-                    color: root.otherColor
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    font.bold: true
-                  }
+                  percent: root.shownOtherPercent
+                  gaugeColor: root.otherColor
+                  title: "Other"
+                  titleColor: root.otherColor
+                  loading: root.loading
+                  gaugeSize: root.gaugeSize
+                  labelFontSize: root.gaugeLabelFont
+                  foreground: root.foreground
+                  trackColor: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.18)
+                  fontFamily: root.fontFamily
                 }
               }
             }
-          }
-
-          Row {
-            id: cycleDaysSection
-            visible: !root.isError
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: Math.min(parent.width, root.usageBlockWidth - Style.space(16))
-            spacing: Style.spacing.sm
-
-            StatusPill {
-              id: cycleDaysPill
-              layoutAlignment: Qt.AlignVCenter
-              text: Model.cycleDaysLeftText(root.data, root.loading)
-              textColor: root.cycleColor
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
-
-            Text {
-              id: cycleDaysLabel
-              layoutAlignment: Qt.AlignVCenter
-              text: "left"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: true
-            }
-
-            Item {
-              id: cycleDaysTrack
-              layoutAlignment: Qt.AlignVCenter
-              width: Math.max(0, cycleDaysSection.width - cycleDaysPill.implicitWidth - cycleDaysLabel.implicitWidth - parent.spacing * 2)
-              visible: root.cycleDaysTotal > 0
-              height: cycleDaysPill.implicitHeight
-
-              readonly property int cellCount: root.cycleDaysTotal
-              readonly property int cellWidth: cellCount > 0 && width > 0
-                ? Math.max(4, Math.floor((width - Math.max(0, cellCount - 1) * root.cycleDaySpacing) / cellCount))
-                : 12
-
-              Row {
-                id: cycleDaysRow
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: root.cycleDaySpacing
-
-                Repeater {
-                  model: root.cycleDaysTotal
-
-                  Rectangle {
-                    required property int index
-                    readonly property bool isToday: {
-                      if (root.cycleDaysTotal <= 0) return false
-                      if (root.cycleDaysUsed < root.cycleDaysTotal)
-                        return index === root.cycleDaysUsed
-                      return index === root.cycleDaysTotal - 1
-                    }
-                    readonly property bool elapsed: index < root.cycleDaysUsed || isToday
-
-                    width: cycleDaysTrack.cellWidth
-                    height: cycleDaysTrack.height
-                    radius: Math.min(Style.cornerRadius, height / 2)
-                    color: elapsed ? root.cycleColor : root.palette[0]
-                    opacity: elapsed ? 1 : 0.35
-                    border.width: isToday ? 1 : 0
-                    border.color: root.accent
-                  }
-                }
-              }
-            }
-          }
-
-          PanelSeparator {
-            visible: !root.isError && root.hasModelDetails
-            foreground: root.foreground
           }
 
           PanelSectionHeader {
@@ -403,36 +390,12 @@ Panel {
 
             Column {
               required property var modelData
+              required property int index
               width: column.width
               spacing: Style.spacing.xs
               visible: !root.isError
 
-              Row {
-                width: parent.width
-                spacing: Style.space(12)
-
-                Text {
-                  width: parent.width - detailText.implicitWidth - parent.spacing
-                  text: Model.modelLabel(modelData.model)
-                  color: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.bodySmall
-                  font.bold: true
-                  elide: Text.ElideRight
-                }
-
-                Text {
-                  id: detailText
-                  text: root.loading
-                    ? "…"
-                    : Math.round(modelData.percent) + "% · "
-                      + Model.formatTokens(modelData.tokens)
-                  color: modelData.color || root.accent
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.bodySmall
-                  font.bold: true
-                }
-              }
+              readonly property color barColor: Model.breakdownBarColor(root.palette, index)
 
               Item {
                 width: parent.width
@@ -448,8 +411,35 @@ Panel {
                   height: parent.height
                   width: parent.width * Math.max(0, Math.min(1, modelData.percent / 100))
                   radius: Style.cornerRadius
-                  color: modelData.color || root.accent
+                  color: barColor
                   opacity: 0.85
+                }
+              }
+
+              Row {
+                width: parent.width
+                spacing: Style.space(12)
+
+                Text {
+                  width: parent.width - detailText.implicitWidth - parent.spacing
+                  text: Model.modelLabel(modelData.model)
+                  color: root.palette[0]
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                  elide: Text.ElideRight
+                }
+
+                Text {
+                  id: detailText
+                  text: root.loading
+                    ? "…"
+                    : Math.round(modelData.percent) + "% · "
+                      + Model.formatTokens(modelData.tokens)
+                  color: root.palette[0]
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
                 }
               }
             }
@@ -483,7 +473,7 @@ Panel {
   component UsageGauge: Item {
     id: gaugeRoot
 
-    property int percent: 0
+    property real percent: 0
     property color gaugeColor: Color.accent
     property bool loading: false
     property int gaugeSize: 130
@@ -491,9 +481,36 @@ Panel {
     property color foreground: Color.foreground
     property color trackColor: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.18)
     property string fontFamily: Style.font.family
+    property int celebrateToken: 0
+    property string title: ""
+    property color titleColor: gaugeColor
+
+    property real popScale: 1
+
+    onCelebrateTokenChanged: if (celebrateToken > 0) popAnim.restart()
 
     implicitWidth: gaugeRoot.gaugeSize
     implicitHeight: ring.height
+    scale: popScale
+    transformOrigin: Item.Center
+
+    SequentialAnimation {
+      id: popAnim
+      NumberAnimation {
+        target: gaugeRoot
+        property: "popScale"
+        to: 1.06
+        duration: 140
+        easing.type: Easing.OutCubic
+      }
+      NumberAnimation {
+        target: gaugeRoot
+        property: "popScale"
+        to: 1
+        duration: 220
+        easing.type: Easing.OutBack
+      }
+    }
 
     readonly property int ringSize: Math.round(gaugeRoot.gaugeSize * 0.91)
     readonly property real ringRadius: gaugeRoot.gaugeSize * 0.34
@@ -540,13 +557,28 @@ Panel {
       Component.onCompleted: requestPaint()
     }
 
-    Text {
+    Column {
       anchors.centerIn: ring
-      text: gaugeRoot.loading ? "…" : (gaugeRoot.percent + "%")
-      color: gaugeRoot.foreground
-      font.family: gaugeRoot.fontFamily
-      font.pixelSize: gaugeRoot.labelFontSize
-      font.bold: true
+      spacing: Style.spacing.xs
+
+      Text {
+        anchors.horizontalCenter: parent.horizontalCenter
+        text: gaugeRoot.loading ? "…" : (Math.round(gaugeRoot.percent) + "%")
+        color: gaugeRoot.foreground
+        font.family: gaugeRoot.fontFamily
+        font.pixelSize: gaugeRoot.labelFontSize
+        font.bold: true
+      }
+
+      Text {
+        visible: gaugeRoot.title !== "" && !gaugeRoot.loading
+        anchors.horizontalCenter: parent.horizontalCenter
+        text: gaugeRoot.title
+        color: gaugeRoot.titleColor
+        font.family: gaugeRoot.fontFamily
+        font.pixelSize: Style.font.caption
+        font.bold: true
+      }
     }
   }
 
@@ -581,6 +613,31 @@ Panel {
     property color foreground: Color.foreground
     property color dim: Qt.darker(foreground, 1.4)
     property string fontFamily: Style.font.family
+    property bool loading: false
+    property bool showCycleChart: false
+    property string cycleSuffix: ""
+    property int cycleDaysTotal: 0
+    property int cycleDaysUsed: 0
+    property color accent: Color.accent
+    property var palette: []
+
+    readonly property string displayValue: loading ? "…" : value
+
+    readonly property color cycleTrackColor: palette && palette.length ? palette[0] : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.22)
+    readonly property real cycleFill: cycleDaysTotal > 0
+      ? Math.max(0, Math.min(1, cycleDaysUsed / cycleDaysTotal))
+      : 0
+
+    readonly property real cycleChartPad: Math.max(0, cycleLabelMetric.implicitHeight - Style.space(4) - Style.space(3))
+
+    Text {
+      id: cycleLabelMetric
+      visible: false
+      text: "today"
+      font.family: tileRoot.fontFamily
+      font.pixelSize: Style.font.caption
+      font.bold: true
+    }
 
     implicitHeight: tileColumn.implicitHeight + Style.spacing.lg * 2
     color: Color.popups.background
@@ -594,8 +651,9 @@ Panel {
       spacing: Style.spacing.labelGap
 
       Text {
+        visible: !tileRoot.showCycleChart
         width: parent.width
-        text: tileRoot.value
+        text: tileRoot.displayValue
         color: tileRoot.valueColor
         font.family: tileRoot.fontFamily
         font.pixelSize: Style.font.title
@@ -604,7 +662,31 @@ Panel {
         elide: Text.ElideRight
       }
 
+      Row {
+        visible: tileRoot.showCycleChart
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: Style.spacing.xs
+
+        Text {
+          text: tileRoot.displayValue
+          color: tileRoot.valueColor
+          font.family: tileRoot.fontFamily
+          font.pixelSize: Style.font.title
+          font.bold: true
+        }
+
+        Text {
+          visible: !tileRoot.loading && tileRoot.cycleSuffix !== ""
+          text: tileRoot.cycleSuffix
+          color: tileRoot.valueColor
+          font.family: tileRoot.fontFamily
+          font.pixelSize: Style.font.caption
+          font.bold: true
+        }
+      }
+
       Text {
+        visible: tileRoot.label !== ""
         width: parent.width
         text: tileRoot.label
         color: tileRoot.dim
@@ -612,6 +694,34 @@ Panel {
         font.pixelSize: Style.font.caption
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
+      }
+
+      Item {
+        id: cycleChart
+        width: parent.width
+        height: tileRoot.showCycleChart
+          ? Style.space(4) + tileRoot.cycleChartPad + Style.space(3)
+          : Style.space(4)
+        visible: tileRoot.showCycleChart && tileRoot.cycleDaysTotal > 0
+
+        Rectangle {
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: Style.space(3)
+          width: parent.width
+          height: Style.space(4)
+          radius: height / 2
+          color: tileRoot.cycleTrackColor
+          opacity: 0.35
+        }
+
+        Rectangle {
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: Style.space(3)
+          height: Style.space(4)
+          width: parent.width * tileRoot.cycleFill
+          radius: height / 2
+          color: tileRoot.valueColor
+        }
       }
     }
   }

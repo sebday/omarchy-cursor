@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
@@ -71,6 +72,21 @@ BarWidget {
       root.injectPanel()
       Qt.callLater(root.injectPanel)
     }
+    onStatusChanged: {
+      if (status === Loader.Error)
+        console.warn("evo.cursor panel failed:", sourceComponent ? sourceComponent.errorString() : "unknown error")
+    }
+  }
+
+  IpcHandler {
+    target: "evo.cursor"
+
+    function refresh(): void { root.refresh() }
+    function open(): void { root.open() }
+    function close(): void { root.close() }
+    function show(): void { root.open() }
+    function hide(): void { root.close() }
+    function toggle(): void { root.togglePanel() }
   }
 
   BarIconButton {

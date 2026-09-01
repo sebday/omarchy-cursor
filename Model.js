@@ -103,6 +103,17 @@ function heatmapColors(accent) {
   ]
 }
 
+function breakdownBarColor(palette, index) {
+  // cyan → sky → mauve (theme-adjacent, no grey or accent)
+  var colors = [
+    DEFAULT_HEATMAP_COLORS[2],
+    DEFAULT_HEATMAP_COLORS[3],
+    DEFAULT_HEATMAP_COLORS[4]
+  ]
+  var row = parseInt(index, 10) || 0
+  return colors[((row % colors.length) + colors.length) % colors.length]
+}
+
 function cycleColor(detail, palette) {
   var colors = palette && palette.length ? palette : DEFAULT_HEATMAP_COLORS
   if (detail && detail.cursorColor) return String(detail.cursorColor)
