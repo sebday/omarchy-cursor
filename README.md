@@ -26,14 +26,14 @@ The bar process does not see tokens exported from your interactive shell. Resolu
 1. `CURSOR_ACCESS_TOKEN` if the Omarchy session already has it (Hyprland env or `~/.config/environment.d/`)
 2. Cursor CLI `~/.config/cursor/auth.json`
 3. Cursor IDE `~/.config/Cursor/User/globalStorage/state.vscdb`
-4. `pass` at `omarchy/cursor/access-token`, then `evoshell/cursor/access-token`
+4. `pass` at `omarchy/cursor/token`, then `evoshell/cursor/access-token`
 
 ```bash
 # Optional session override for the bar
 echo 'CURSOR_ACCESS_TOKEN=your-jwt' > ~/.config/environment.d/cursor.conf
 
 # Optional pass fallback
-pass insert omarchy/cursor/access-token
+pass insert omarchy/cursor/token
 ```
 
 ## Bar
@@ -72,3 +72,7 @@ omarchy-shell shell toggle evo.cursor
 | `close` / `hide` | Close the panel |
 | `toggle` | Toggle the panel |
 | `refresh` | Refresh usage |
+
+## License
+
+MIT.

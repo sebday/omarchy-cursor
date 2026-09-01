@@ -1,10 +1,12 @@
 import QtQuick
+import Quickshell
 import qs.Commons
 import qs.Ui
 
 BarWidget {
   id: root
   moduleName: "evo.cursor"
+
 
   function injectPanel() {
     var target = panelLoader.item
@@ -23,6 +25,14 @@ BarWidget {
     if (panelLoader.item && panelLoader.item.toggle) panelLoader.item.toggle()
   }
 
+  function openDashboard() {
+    if (panelLoader.item && panelLoader.item.openDashboard) {
+      panelLoader.item.openDashboard()
+      return
+    }
+    Quickshell.execDetached(["xdg-open", "https://cursor.com/dashboard/spending"])
+  }
+
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
 
   function open() {
@@ -38,7 +48,10 @@ BarWidget {
   function closeForPopoutSwitch() {
     if (panelLoader.item) panelLoader.item.closeForPopoutSwitch()
   }
-  readonly property bool iconActive: panelLoader.item ? panelLoader.item.iconActive === true : false
+
+  readonly property bool iconError: panelLoader.item ? panelLoader.item.iconError === true : false
+  readonly property bool iconBusy: panelLoader.item ? panelLoader.item.iconBusy === true : false
+  readonly property bool iconMuted: panelLoader.item ? panelLoader.item.iconMuted === true : false
   readonly property string tooltip: panelLoader.item ? panelLoader.item.barTooltip : "Cursor usage"
 
   implicitWidth: button.implicitWidth
@@ -65,12 +78,16 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: "󰁨"
-    active: root.iconActive
+    active: root.iconError
+    useActiveColor: root.iconError
+    dimmed: root.iconMuted && !root.iconError
     tooltipText: root.tooltip
 
-    onPressed: function() {
+    onPressed: function(b) {
       if (!root.bar) return
-      root.togglePanel()
+      if (b === Qt.MiddleButton) root.openDashboard()
+      else if (b === Qt.RightButton) root.refresh()
+      else root.togglePanel()
     }
   }
 }

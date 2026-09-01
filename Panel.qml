@@ -4,7 +4,6 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
-import "../evo.bar-lib/ui" as EvoUi
 import "Model.js" as Model
 
 Panel {
@@ -15,6 +14,7 @@ Panel {
 
   property var anchorItem: null
   property var hostWidget: null
+  property bool openedFromHotkey: false
   readonly property var barIdentity: hostWidget || root
 
   readonly property color foreground: Color.foreground
@@ -26,7 +26,7 @@ Panel {
   readonly property var palette: Model.heatmapColors(accent)
 
   readonly property string statusScript: Qt.resolvedUrl("bin/cursor-usage").toString().replace("file://", "")
-  readonly property int refreshMinutes: 5
+  readonly property int refreshIntervalSec: Math.max(30, parseInt(setting("refreshIntervalSec", 300), 10) || 300)
   readonly property int gaugeSpacing: Style.space(12)
   readonly property int usageContentWidth: Math.max(Style.space(340), panel.contentWidth - Style.space(24))
   readonly property int gaugeSize: Math.max(Style.space(96), Math.floor((usageContentWidth - gaugeSpacing) / 2))
@@ -49,6 +49,9 @@ Panel {
   readonly property int cycleDaysUsed: parseInt(data.cycleDaysUsed, 10) || 0
   readonly property int cycleDaysTotal: parseInt(data.cycleDaysTotal, 10) || 0
   readonly property bool iconActive: Model.iconActive(data)
+  readonly property bool iconError: isError
+  readonly property bool iconBusy: loading
+  readonly property bool iconMuted: false
   readonly property string barTooltip: Model.barTooltip(data, loading)
 
   function applyPayload(raw) {
@@ -68,14 +71,41 @@ Panel {
     root.close()
   }
 
-  function openFromHotkey() {
+  function open() {
+    openedFromHotkey = false
+    setCenterHoverRevealSuppressed(false)
     root.controller.show()
     root.refresh()
+  }
+
+  function openFromHotkey() {
+    openedFromHotkey = true
+    root.controller.show()
+    root.refresh()
+    Qt.callLater(function() {
+      if (root.opened) setCenterHoverRevealSuppressed(true)
+    })
+  }
+
+  function close() {
+    setCenterHoverRevealSuppressed(false)
+    root.controller.hide()
   }
 
   function toggle() {
     if (root.opened) root.close()
     else root.openFromHotkey()
+  }
+
+  function switchPanel(direction) {
+    if (root.bar && typeof root.bar.switchPanelFrom === "function")
+      return root.bar.switchPanelFrom(root.barIdentity, direction)
+    return false
+  }
+
+  function setCenterHoverRevealSuppressed(value) {
+    if (root.bar && "centerHoverRevealSuppressed" in root.bar)
+      root.bar.centerHoverRevealSuppressed = value
   }
 
   Component.onCompleted: refresh()
@@ -105,11 +135,12 @@ Panel {
 
   Timer {
     id: refreshTimer
-    interval: root.refreshMinutes * 60 * 1000
+    interval: root.refreshIntervalSec * 1000
     running: true
     repeat: true
     onTriggered: root.refresh()
   }
+
 
   IpcHandler {
     target: root.ipcTarget
@@ -128,6 +159,7 @@ Panel {
     owner: root.barIdentity
     bar: root.bar
     open: root.opened
+    centerOnBar: true
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
     contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(520))
@@ -136,10 +168,7 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       onCloseRequested: root.close()
-      onTabRequested: function(direction) {
-        if (root.bar && typeof root.bar.switchPanelFrom === "function")
-          root.bar.switchPanelFrom(root.barIdentity, direction)
-      }
+      onTabRequested: function(direction) { root.switchPanel(direction) }
 
       Flickable {
         id: panelFlick
@@ -160,11 +189,27 @@ Panel {
           Text {
             width: parent.width
             visible: root.isError
-            text: root.data.error
+            text: root.data.error || ""
             color: root.urgent
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
             wrapMode: Text.WordWrap
+          }
+
+          Text {
+            width: parent.width
+            visible: root.isError
+            text: "Open Cursor spending →"
+            color: root.accent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            font.bold: true
+
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.openDashboard()
+            }
           }
 
           PanelSectionHeader {
@@ -180,7 +225,7 @@ Panel {
             width: parent.width
             spacing: Style.space(8)
 
-            EvoUi.PanelStatTile {
+            PanelStatTile {
               width: (parent.width - parent.spacing) / 2
               value: root.loading ? "…" : Model.formatTokens(root.detail.tokensTotal)
               label: "tokens"
@@ -189,7 +234,7 @@ Panel {
               fontFamily: root.fontFamily
             }
 
-            EvoUi.PanelStatTile {
+            PanelStatTile {
               width: (parent.width - parent.spacing) / 2
               value: root.loading ? "…" : Model.formatTokens(root.detail.tokensToday)
               label: "today"
@@ -221,7 +266,7 @@ Panel {
 
                   UsageGauge {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    percent: root.data.cursorPercent
+                    percent: root.data.cursorPercent || 0
                     gaugeColor: root.cursorColor
                     loading: root.loading
                     gaugeSize: root.gaugeSize
@@ -247,7 +292,7 @@ Panel {
 
                   UsageGauge {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    percent: root.data.otherPercent
+                    percent: root.data.otherPercent || 0
                     gaugeColor: root.otherColor
                     loading: root.loading
                     gaugeSize: root.gaugeSize
@@ -279,6 +324,7 @@ Panel {
 
             StatusPill {
               id: cycleDaysPill
+              layoutAlignment: Qt.AlignVCenter
               text: Model.cycleDaysLeftText(root.data, root.loading)
               textColor: root.cycleColor
               foreground: root.foreground
@@ -287,7 +333,7 @@ Panel {
 
             Text {
               id: cycleDaysLabel
-              anchors.verticalCenter: parent.verticalCenter
+              layoutAlignment: Qt.AlignVCenter
               text: "left"
               color: root.dim
               font.family: root.fontFamily
@@ -297,9 +343,10 @@ Panel {
 
             Item {
               id: cycleDaysTrack
+              layoutAlignment: Qt.AlignVCenter
               width: Math.max(0, cycleDaysSection.width - cycleDaysPill.implicitWidth - cycleDaysLabel.implicitWidth - parent.spacing * 2)
               visible: root.cycleDaysTotal > 0
-              implicitHeight: cycleDaysRow.height
+              height: cycleDaysPill.implicitHeight
 
               readonly property int cellCount: root.cycleDaysTotal
               readonly property int cellWidth: cellCount > 0 && width > 0
@@ -326,8 +373,8 @@ Panel {
                     readonly property bool elapsed: index < root.cycleDaysUsed || isToday
 
                     width: cycleDaysTrack.cellWidth
-                    height: width
-                    radius: Style.cornerRadius
+                    height: cycleDaysTrack.height
+                    radius: Math.min(Style.cornerRadius, height / 2)
                     color: elapsed ? root.cycleColor : root.palette[0]
                     opacity: elapsed ? 1 : 0.35
                     border.width: isToday ? 1 : 0
@@ -522,6 +569,50 @@ Panel {
       font.family: parent.fontFamily
       font.pixelSize: Style.font.caption
       font.bold: true
+    }
+  }
+
+  component PanelStatTile: BorderSurface {
+    id: tileRoot
+
+    property string value: ""
+    property string label: ""
+    property color valueColor: Color.accent
+    property color foreground: Color.foreground
+    property color dim: Qt.darker(foreground, 1.4)
+    property string fontFamily: Style.font.family
+
+    implicitHeight: tileColumn.implicitHeight + Style.spacing.lg * 2
+    color: Color.popups.background
+    borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, 1)
+    radius: Style.cornerRadius
+
+    Column {
+      id: tileColumn
+      anchors.centerIn: parent
+      width: parent.width - Style.spacing.lg * 2
+      spacing: Style.spacing.labelGap
+
+      Text {
+        width: parent.width
+        text: tileRoot.value
+        color: tileRoot.valueColor
+        font.family: tileRoot.fontFamily
+        font.pixelSize: Style.font.title
+        font.bold: true
+        horizontalAlignment: Text.AlignHCenter
+        elide: Text.ElideRight
+      }
+
+      Text {
+        width: parent.width
+        text: tileRoot.label
+        color: tileRoot.dim
+        font.family: tileRoot.fontFamily
+        font.pixelSize: Style.font.caption
+        horizontalAlignment: Text.AlignHCenter
+        elide: Text.ElideRight
+      }
     }
   }
 }

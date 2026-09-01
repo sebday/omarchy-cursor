@@ -2,13 +2,14 @@
 # Cursor usage for evo.cursor Omarchy bar widget.
 set -euo pipefail
 
-_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../evo.bar-lib/bin" && pwd)"
-# shellcheck source=/dev/null
-source "$_lib/common.sh"
-
 SPENDING_URL="https://cursor.com/dashboard/spending"
-CURSOR_CACHE_KEY="cursor"
-CURSOR_CACHE_SEC="${EVO_CURSOR_CACHE_SEC:-300}"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/bar"
+CACHE_PATH="${CACHE_DIR}/cursor.json"
+CACHE_TTL="${EVO_CURSOR_CACHE_SEC:-300}"
+CURSOR_AUTH_JSON="${CURSOR_AUTH_JSON:-$HOME/.config/cursor/auth.json}"
+CURSOR_STATE_DB="${CURSOR_STATE_DB:-$HOME/.config/Cursor/User/globalStorage/state.vscdb}"
+
+HEATMAP_COLORS=("#45475a" "#89b4fa" "#74c7ec" "#89dceb" "#cba6f7")
 
 usage() {
     cat >&2 <<'EOF'
@@ -25,6 +26,92 @@ cmd_open() {
 json_error() {
     jq -cn --arg text "$1" --arg message "${2:-}" \
         '{text: $text, class: "error", message: $message, chips: [], cursorPercent: 0, otherPercent: 0, cycleDaysUsed: 0, cycleDaysTotal: 0, cycleProgress: 0, detail: null}'
+}
+
+cache_read() {
+    [[ -f "$CACHE_PATH" ]] || return 1
+    local now mtime age
+    now=$(date +%s)
+    mtime=$(stat -c %Y "$CACHE_PATH" 2>/dev/null || echo 0)
+    age=$((now - mtime))
+    (( age < CACHE_TTL )) || return 1
+    cat "$CACHE_PATH"
+}
+
+cache_write() {
+    mkdir -p "$CACHE_DIR"
+    local tmp
+    tmp="$(mktemp "${CACHE_PATH}.XXXXXX")"
+    cat >"$tmp"
+    mv "$tmp" "$CACHE_PATH"
+}
+
+token_from_auth_json() {
+    local path="$1"
+    [[ -f "$path" ]] || return 1
+    jq -r '.accessToken // empty' "$path" 2>/dev/null
+}
+
+token_from_state_db() {
+    local path="$1"
+    [[ -f "$path" ]] || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 - "$path" <<'PY'
+import sqlite3, sys
+path = sys.argv[1]
+for uri in (f"file:{path}?mode=ro", f"file:{path}?mode=ro&immutable=1"):
+    try:
+        con = sqlite3.connect(uri, uri=True)
+        row = con.execute(
+            "SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken'"
+        ).fetchone()
+        con.close()
+        if row and row[0]:
+            print(row[0], end="")
+            raise SystemExit(0)
+    except SystemExit:
+        raise
+    except Exception:
+        continue
+raise SystemExit(1)
+PY
+}
+
+token_from_pass() {
+    command -v pass >/dev/null 2>&1 || return 1
+    local value path
+    for path in omarchy/cursor/token evoshell/cursor/access-token; do
+        value="$(pass show "$path" 2>/dev/null || true)"
+        if [[ -n "$value" ]]; then
+            printf '%s' "$value"
+            return 0
+        fi
+    done
+    return 1
+}
+
+resolve_token() {
+    local token=""
+    if [[ -n "${CURSOR_ACCESS_TOKEN:-}" ]]; then
+        printf '%s' "$CURSOR_ACCESS_TOKEN"
+        return 0
+    fi
+    token="$(token_from_auth_json "$CURSOR_AUTH_JSON" || true)"
+    if [[ -n "$token" ]]; then
+        printf '%s' "$token"
+        return 0
+    fi
+    token="$(token_from_state_db "$CURSOR_STATE_DB" || true)"
+    if [[ -n "$token" ]]; then
+        printf '%s' "$token"
+        return 0
+    fi
+    token="$(token_from_pass || true)"
+    if [[ -n "$token" ]]; then
+        printf '%s' "$token"
+        return 0
+    fi
+    return 1
 }
 
 jwt_sub() {
@@ -83,28 +170,33 @@ fetch_aggregated() {
 }
 
 sum_aggregated_tokens() {
-    jq -r '
+    local n
+    n=$(jq -r '
       ((.totalInputTokens // 0) | tonumber) +
       ((.totalOutputTokens // 0) | tonumber) +
       ((.totalCacheReadTokens // 0) | tonumber) +
       ((.totalCacheWriteTokens // 0) | tonumber)
-    ' 2>/dev/null <<< "${1:-{}}"
+    ' <<< "${1:-{}}" 2>/dev/null || true)
+    printf '%s' "${n:-0}"
 }
 
 cmd_status() {
-    if cached=$(evo_bar_cache_read "$CURSOR_CACHE_KEY" "$CURSOR_CACHE_SEC" 2>/dev/null); then
+    local cached
+    if cached=$(cache_read 2>/dev/null); then
         printf '%s\n' "$cached"
         exit 0
     fi
 
-    evo_bar_load_secrets CURSOR_ACCESS_TOKEN
-
     local token session_cookie response plan_json
-    token="${CURSOR_ACCESS_TOKEN:-}"
+    token="$(resolve_token || true)"
     session_cookie=$(build_session_cookie "$token") || session_cookie=""
 
     if [[ -z "$session_cookie" ]]; then
-        json_error "󰁨 …" "Set CURSOR_ACCESS_TOKEN: pass insert omarchy/cursor/access-token (or evoshell/cursor/access-token)"
+        if [[ -n "$token" ]]; then
+            json_error "󰁨 auth" "Cursor session token is invalid — sign in to Cursor again, or set a fresh CURSOR_ACCESS_TOKEN"
+        else
+            json_error "󰁨 …" "Sign in to Cursor, or set CURSOR_ACCESS_TOKEN, or pass insert omarchy/cursor/token"
+        fi
         exit 0
     fi
 
@@ -115,7 +207,8 @@ cmd_status() {
 
     response=$(curl -sS --max-time 20 \
         "https://cursor.com/api/usage-summary" \
-        -H "Cookie: WorkosCursorSessionToken=${session_cookie}" 2>/dev/null) || response=""
+        -H "Cookie: WorkosCursorSessionToken=${session_cookie}" \
+        -H "Origin: https://cursor.com" 2>/dev/null) || response=""
 
     if [[ -z "$response" ]]; then
         json_error "󰁨 …" "Could not reach cursor.com/api/usage-summary"
@@ -125,7 +218,7 @@ cmd_status() {
     if echo "$response" | jq -e '.error' >/dev/null 2>&1; then
         local msg
         msg=$(echo "$response" | jq -r '.description // .error // "not authenticated"')
-        json_error "󰁨 auth" "$msg — refresh cursor access token"
+        json_error "󰁨 auth" "$msg — sign in to Cursor again, or refresh CURSOR_ACCESS_TOKEN"
         exit 0
     fi
 
@@ -169,11 +262,10 @@ cmd_status() {
     tokens_total=$(sum_aggregated_tokens "$aggregated_cycle")
     tokens_today=$(sum_aggregated_tokens "$aggregated_today")
 
-    evo_bar_load_heatmap_colors
     local cursor_color other_color heatmap_json model_split_json chips_json detail_json output
-    cursor_color="${GITHUB_COLORS[2]:-#74c7ec}"
-    other_color="${GITHUB_COLORS[4]:-#cba6f7}"
-    heatmap_json=$(printf '%s\n' "${GITHUB_COLORS[@]}" | jq -R . | jq -s .)
+    cursor_color="${HEATMAP_COLORS[2]}"
+    other_color="${HEATMAP_COLORS[4]}"
+    heatmap_json='["#45475a","#89b4fa","#74c7ec","#89dceb","#cba6f7"]'
 
     model_split_json=$(jq -c --argjson colors "$heatmap_json" '
       [.aggregations[]?
@@ -195,7 +287,10 @@ cmd_status() {
           percent: (if $total > 0 then (.value.tokens / $total * 100) else 0 end),
           color: $colors[.key % ($colors | length)]
         })
-    ' <<< "${aggregated_cycle:-{}}")
+    ' <<< "${aggregated_cycle:-{}}" 2>/dev/null || true)
+    if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"${model_split_json:-}"; then
+        model_split_json='[]'
+    fi
 
     chips_json=$(jq -cn \
         --argjson cursor "$cursor_pct" \
@@ -236,7 +331,11 @@ cmd_status() {
           cycleProgress: $cycleProgress,
           cursorColor: $cursorColor,
           otherColor: $otherColor
-        }')
+        }' 2>/dev/null || true)
+    if ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"${detail_json:-}"; then
+        json_error "󰁨 …" "Could not parse Cursor usage"
+        exit 0
+    fi
 
     output=$(jq -cn \
         --arg text "󰁨 ${cursor_pct}% / ${other_pct}%" \
@@ -249,7 +348,7 @@ cmd_status() {
         --argjson detail "$detail_json" \
         '{text: $text, class: "cursor-usage", chips: $chips, cursorPercent: $cursorPercent, otherPercent: $otherPercent, cycleDaysUsed: $cycleDaysUsed, cycleDaysTotal: $cycleDaysTotal, cycleProgress: $cycleProgress, detail: $detail}')
 
-    printf '%s\n' "$output" | evo_bar_cache_write "$CURSOR_CACHE_KEY"
+    printf '%s\n' "$output" | cache_write
     printf '%s\n' "$output"
 }
 
