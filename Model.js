@@ -1,5 +1,20 @@
 .pragma library
 
+
+function plain(value, maxLen) {
+  var s = String(value == null ? "" : value)
+  var max = maxLen || 240
+  var out = ""
+  for (var i = 0; i < s.length && out.length < max; i++) {
+    var code = s.charCodeAt(i)
+    if (code < 32 || (code >= 127 && code < 160)) continue
+    var c = s.charAt(i)
+    if (c === "<" || c === ">" || c === "&") continue
+    out += c
+  }
+  return out
+}
+
 var DEFAULT_HEATMAP_COLORS = ["#45475a", "#89b4fa", "#74c7ec", "#89dceb", "#cba6f7"]
 
 function emptyDetail() {
@@ -127,9 +142,9 @@ function iconActive(data) {
 
 function barTooltip(data, loading) {
   if (loading) return "Cursor usage"
-  if (!data || !data.ok) return data && data.error ? data.error : "Cursor usage"
-  if (data.text) return String(data.text).replace(/^[^\s]+\s*/, "").trim() || data.text
-  return data.cursorPercent + "% / " + data.otherPercent + "%"
+  if (!data || !data.ok) return plain(data && data.error ? data.error : "Cursor usage")
+  if (data.text) return plain(String(data.text).replace(/^[^\s]+\s*/, "").trim() || data.text)
+  return plain(data.cursorPercent + "% / " + data.otherPercent + "%")
 }
 
 function showTokens(detail) {

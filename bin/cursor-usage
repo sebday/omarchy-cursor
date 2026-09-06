@@ -20,7 +20,7 @@ EOF
 }
 
 cmd_open() {
-    exec xdg-open "$SPENDING_URL"
+    exec /usr/bin/xdg-open -- "$SPENDING_URL"
 }
 
 json_error() {
@@ -28,22 +28,61 @@ json_error() {
         '{text: $text, class: "error", message: $message, chips: [], cursorPercent: 0, otherPercent: 0, cycleDaysUsed: 0, cycleDaysTotal: 0, cycleProgress: 0, detail: null}'
 }
 
+MAX_BYTES=1048576
+
+private_dir() {
+    local dir="$1"
+    mkdir -p -m 700 "$dir" || return 1
+    [[ ! -L "$dir" ]] || return 1
+    [[ -d "$dir" ]] || return 1
+    [[ "$(stat -c %u "$dir")" == "$(id -u)" ]] || return 1
+    find "$dir" -mindepth 1 -maxdepth 1 ! -type f -exec rm -rf -- {} + 2>/dev/null || true
+    find "$dir" -mindepth 1 -maxdepth 1 -type f -exec chmod 600 -- {} + 2>/dev/null || true
+}
+
+read_bounded() {
+    local file="$1" max="${2:-65536}" data
+    [[ -e "$file" ]] || return 1
+    data=$(/usr/bin/dd if="$file" iflag=nofollow,nonblock,count_bytes,fullblock bs=1 count=$((max + 1)) status=none) || return 1
+    [ ${#data} -le "$max" ] || return 1
+    printf '%s' "$data"
+}
+
+curl_cookie() {
+    local url="$1" cookie="$2"
+    shift 2
+    case "$cookie" in *'"'*|*\\*|$'\n'*) return 1 ;; esac
+    local resp
+    resp=$(
+      printf '%s\n' "header = \"Cookie: WorkosCursorSessionToken=${cookie}\"" \
+        | /usr/bin/curl -q -sS --fail --config - \
+            --proto '=https' --proto-redir '=https' \
+            --max-time 20 --connect-timeout 5 --max-filesize "$MAX_BYTES" --noproxy '*' \
+            "$@" -- "$url" \
+        | /usr/bin/head -c $((MAX_BYTES + 1))
+    ) || return 1
+    [ ${#resp} -le "$MAX_BYTES" ] || return 1
+    printf '%s' "$resp"
+}
+
 cache_read() {
-    [[ -f "$CACHE_PATH" ]] || return 1
-    local now mtime age
+    [[ -e "$CACHE_PATH" ]] || return 1
+    local now mtime age content
     now=$(date +%s)
     mtime=$(stat -c %Y "$CACHE_PATH" 2>/dev/null || echo 0)
     age=$((now - mtime))
     (( age < CACHE_TTL )) || return 1
-    cat "$CACHE_PATH"
+    content="$(read_bounded "$CACHE_PATH")" || return 1
+    printf '%s' "$content"
 }
 
 cache_write() {
-    mkdir -p "$CACHE_DIR"
+    private_dir "$CACHE_DIR" || return 1
+    umask 077
     local tmp
-    tmp="$(mktemp "${CACHE_PATH}.XXXXXX")"
-    cat >"$tmp"
-    mv "$tmp" "$CACHE_PATH"
+    tmp="$(/usr/bin/mktemp -p "$CACHE_DIR" .cursor.XXXXXXXXXX)" || return 1
+    cat >"$tmp" || { rm -f -- "$tmp"; return 1; }
+    mv -f -T -- "$tmp" "$CACHE_PATH"
 }
 
 token_from_auth_json() {
@@ -137,12 +176,10 @@ fetch_aggregated() {
     local start_ms="$1" end_ms="$2" body resp session_cookie="$3"
     [[ -n "$start_ms" && -n "$end_ms" && "$start_ms" -gt 0 && "$end_ms" -gt 0 ]] || return 1
     body=$(jq -cn --arg start "$start_ms" --arg end "$end_ms" '{startDate: $start, endDate: $end}')
-    resp=$(curl -sS --max-time 20 \
-        "https://cursor.com/api/dashboard/get-aggregated-usage-events" \
-        -H "Cookie: WorkosCursorSessionToken=${session_cookie}" \
+    resp=$(curl_cookie "https://cursor.com/api/dashboard/get-aggregated-usage-events" "$session_cookie" \
         -H "Content-Type: application/json" \
         -H "Origin: https://cursor.com" \
-        -d "$body" 2>/dev/null) || resp=""
+        -d "$body") || resp=""
     [[ -n "$resp" ]] || return 1
     printf '%s' "$resp"
 }
@@ -183,10 +220,8 @@ cmd_status() {
         exit 0
     fi
 
-    response=$(curl -sS --max-time 20 \
-        "https://cursor.com/api/usage-summary" \
-        -H "Cookie: WorkosCursorSessionToken=${session_cookie}" \
-        -H "Origin: https://cursor.com" 2>/dev/null) || response=""
+    response=$(curl_cookie "https://cursor.com/api/usage-summary" "$session_cookie" \
+        -H "Origin: https://cursor.com") || response=""
 
     if [[ -z "$response" ]]; then
         json_error "󰁨 …" "Could not reach cursor.com/api/usage-summary"

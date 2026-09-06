@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "Model.js" as Model
 
 BarWidget {
   id: root
@@ -97,7 +98,7 @@ BarWidget {
     active: root.iconError
     useActiveColor: root.iconError
     dimmed: root.iconMuted && !root.iconError
-    tooltipText: root.tooltip
+    tooltipText: Model.plain(root.tooltip)
 
     onPressed: function(b) {
       if (!root.bar) return

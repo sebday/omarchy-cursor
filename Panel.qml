@@ -175,20 +175,40 @@ Panel {
 
   Process {
     id: statusProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var raw = String(text || "").trim()
+    onStarted: { stdoutBuf = ""; stderrBuf = "" }
+
+    property string stdoutBuf: ""
+    property string stderrBuf: ""
+    stdout: SplitParser {
+      splitMarker: ""
+      onRead: function(chunk) {
+        statusProc.stdoutBuf += chunk
+        if (statusProc.stdoutBuf.length > 262144) {
+          statusProc.signal(15)
+          statusProc.stdoutBuf = ""
+        }
+      }
+    }
+    stderr: SplitParser {
+      splitMarker: ""
+      onRead: function(chunk) {
+        statusProc.stderrBuf += chunk
+        if (statusProc.stderrBuf.length > 4096) {
+          statusProc.signal(15)
+          statusProc.stderrBuf = ""
+        }
+      }
+    }
+    onExited: function(exitCode) {
+      var raw = String(stdoutBuf || "").trim()
         if (!raw) {
           root.loading = false
           if (!root.hasData) root.applyPayload('{"class":"error","message":"No data"}')
           return
         }
         root.applyPayload(raw)
-      }
+      root.loading = false
     }
-    stderr: StdioCollector { waitForEnd: true }
-    onExited: root.loading = false
   }
 
   Timer {
@@ -242,6 +262,7 @@ Panel {
 
             iconComponent: Component {
               Text {
+                textFormat: Text.PlainText
                 text: "󰁨"
                 color: root.iconError ? root.urgent : root.cursorColor
                 font.family: root.fontFamily
@@ -252,6 +273,7 @@ Panel {
           }
 
           Text {
+            textFormat: Text.PlainText
             width: parent.width
             visible: root.isError
             text: root.data.error || ""
@@ -262,6 +284,7 @@ Panel {
           }
 
           Text {
+            textFormat: Text.PlainText
             width: parent.width
             visible: root.isError
             text: "Open Cursor spending →"
@@ -421,6 +444,7 @@ Panel {
                 spacing: Style.space(12)
 
                 Text {
+                  textFormat: Text.PlainText
                   width: parent.width - detailText.implicitWidth - parent.spacing
                   text: Model.modelLabel(modelData.model)
                   color: root.palette[0]
@@ -431,6 +455,7 @@ Panel {
                 }
 
                 Text {
+                  textFormat: Text.PlainText
                   id: detailText
                   text: root.loading
                     ? "…"
@@ -451,6 +476,7 @@ Panel {
             spacing: Style.spacing.sm
 
             Text {
+              textFormat: Text.PlainText
               text: "On-demand usage enabled"
               color: root.dim
               font.family: root.fontFamily
@@ -562,6 +588,7 @@ Panel {
       spacing: Style.spacing.xs
 
       Text {
+        textFormat: Text.PlainText
         anchors.horizontalCenter: parent.horizontalCenter
         text: gaugeRoot.loading ? "…" : (Math.round(gaugeRoot.percent) + "%")
         color: gaugeRoot.foreground
@@ -571,6 +598,7 @@ Panel {
       }
 
       Text {
+        textFormat: Text.PlainText
         visible: gaugeRoot.title !== "" && !gaugeRoot.loading
         anchors.horizontalCenter: parent.horizontalCenter
         text: gaugeRoot.title
@@ -594,6 +622,7 @@ Panel {
     color: Qt.rgba(textColor.r, textColor.g, textColor.b, 0.14)
 
     Text {
+      textFormat: Text.PlainText
       id: pillText
       anchors.centerIn: parent
       text: parent.text
@@ -631,6 +660,7 @@ Panel {
     readonly property real cycleChartPad: Math.max(0, cycleLabelMetric.implicitHeight - Style.space(4) - Style.space(3))
 
     Text {
+      textFormat: Text.PlainText
       id: cycleLabelMetric
       visible: false
       text: "today"
@@ -651,6 +681,7 @@ Panel {
       spacing: Style.spacing.labelGap
 
       Text {
+        textFormat: Text.PlainText
         visible: !tileRoot.showCycleChart
         width: parent.width
         text: tileRoot.displayValue
@@ -668,6 +699,7 @@ Panel {
         spacing: Style.spacing.xs
 
         Text {
+          textFormat: Text.PlainText
           text: tileRoot.displayValue
           color: tileRoot.valueColor
           font.family: tileRoot.fontFamily
@@ -676,6 +708,7 @@ Panel {
         }
 
         Text {
+          textFormat: Text.PlainText
           visible: !tileRoot.loading && tileRoot.cycleSuffix !== ""
           text: tileRoot.cycleSuffix
           color: tileRoot.valueColor
@@ -686,6 +719,7 @@ Panel {
       }
 
       Text {
+        textFormat: Text.PlainText
         visible: tileRoot.label !== ""
         width: parent.width
         text: tileRoot.label

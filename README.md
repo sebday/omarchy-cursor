@@ -39,3 +39,15 @@ omarchy-shell shell toggle evo.cursor
 ## License
 
 MIT.
+
+## Removing
+
+```bash
+omarchy plugin remove evo.cursor
+```
+
+That deletes the plugin directory. It does not delete:
+
+- `~/.cache/omarchy/bar/cursor.json`
+
+Network: https://cursor.com/api/usage-summary and https://cursor.com/api/dashboard/get-aggregated-usage-events.
