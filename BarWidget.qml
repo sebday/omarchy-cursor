@@ -55,7 +55,10 @@ BarWidget {
   readonly property bool iconBusy: panelLoader.item ? panelLoader.item.iconBusy === true : false
   readonly property bool iconMuted: panelLoader.item ? panelLoader.item.iconMuted === true : false
   readonly property string tooltip: panelLoader.item ? panelLoader.item.barTooltip : "Cursor usage"
+  readonly property string valueText: panelLoader.item ? panelLoader.item.barValue : ""
+  readonly property real openPanelIndicatorWidth: button.labelWidth
 
+  visible: valueText !== ""
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
   width: implicitWidth
@@ -90,15 +93,26 @@ BarWidget {
     function toggle(): void { root.togglePanel() }
   }
 
-  BarIconButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "󰁨"
+    text: root.valueText
+    hasVisualContent: root.valueText !== ""
+    horizontalMargin: 8.75
     active: root.iconError
     useActiveColor: root.iconError
     dimmed: root.iconMuted && !root.iconError
     tooltipText: Model.plain(root.tooltip)
+    opacity: root.iconBusy && !root.iconError ? pulseOpacity : 1
+    property real pulseOpacity: 1
+
+    SequentialAnimation on pulseOpacity {
+      running: root.iconBusy && !root.iconError
+      loops: Animation.Infinite
+      NumberAnimation { from: 1.0; to: 0.42; duration: 880; easing.type: Easing.InOutSine }
+      NumberAnimation { from: 0.42; to: 1.0; duration: 880; easing.type: Easing.InOutSine }
+    }
 
     onPressed: function(b) {
       if (!root.bar) return

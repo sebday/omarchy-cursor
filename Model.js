@@ -144,7 +144,16 @@ function barTooltip(data, loading) {
   if (loading) return "Cursor usage"
   if (!data || !data.ok) return plain(data && data.error ? data.error : "Cursor usage")
   if (data.text) return plain(String(data.text).replace(/^[^\s]+\s*/, "").trim() || data.text)
-  return plain(data.cursorPercent + "% / " + data.otherPercent + "%")
+  return barValue(data)
+}
+
+function barValue(data) {
+  if (!data || !data.ok) return ""
+  var cursor = parseInt(data.cursorPercent, 10)
+  var other = parseInt(data.otherPercent, 10)
+  if (isNaN(cursor)) cursor = 0
+  if (isNaN(other)) other = 0
+  return plain(cursor + "% / " + other + "%", 16)
 }
 
 function showTokens(detail) {

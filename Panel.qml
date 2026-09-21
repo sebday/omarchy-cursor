@@ -72,6 +72,7 @@ Panel {
   readonly property bool iconBusy: loading
   readonly property bool iconMuted: false
   readonly property string barTooltip: Model.barTooltip(data, loading)
+  readonly property string barValue: Model.barValue(data)
   readonly property string heroMeta: {
     if (loading) return "Refreshing…"
     if (isError) return data.error || "Unavailable"
