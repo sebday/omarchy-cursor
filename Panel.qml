@@ -262,13 +262,9 @@ Panel {
             iconOpacity: root.loading ? 0.7 : (root.iconError ? 1 : (root.iconActive ? 1 : 0.7))
 
             iconComponent: Component {
-              Text {
-                textFormat: Text.PlainText
-                text: "󰁨"
+              CursorIcon {
+                iconSize: Style.font.display
                 color: root.iconError ? root.urgent : root.cursorColor
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.display
-                opacity: 0.92
               }
             }
           }

@@ -208,15 +208,15 @@ cmd_status() {
 
     if [[ -z "$session_cookie" ]]; then
         if [[ -n "$token" ]]; then
-            json_error "󰁨 auth" "Cursor session token is invalid — sign in to Cursor IDE or the Cursor CLI"
+            json_error "auth" "Cursor session token is invalid — sign in to Cursor IDE or the Cursor CLI"
         else
-            json_error "󰁨 …" "Sign in to Cursor IDE or the Cursor CLI"
+            json_error "…" "Sign in to Cursor IDE or the Cursor CLI"
         fi
         exit 0
     fi
 
     if ! command -v curl >/dev/null 2>&1; then
-        json_error "󰁨 …" "curl required"
+        json_error "…" "curl required"
         exit 0
     fi
 
@@ -224,20 +224,20 @@ cmd_status() {
         -H "Origin: https://cursor.com") || response=""
 
     if [[ -z "$response" ]]; then
-        json_error "󰁨 …" "Could not reach cursor.com/api/usage-summary"
+        json_error "…" "Could not reach cursor.com/api/usage-summary"
         exit 0
     fi
 
     if echo "$response" | jq -e '.error' >/dev/null 2>&1; then
         local msg
         msg=$(echo "$response" | jq -r '.description // .error // "not authenticated"')
-        json_error "󰁨 auth" "$msg — sign in to Cursor IDE or the Cursor CLI"
+        json_error "auth" "$msg — sign in to Cursor IDE or the Cursor CLI"
         exit 0
     fi
 
     plan_json=$(echo "$response" | jq -c '.individualUsage.plan // empty')
     if [[ -z "$plan_json" || "$plan_json" == "null" ]]; then
-        json_error "󰁨 —" "No plan usage in API response"
+        json_error "—" "No plan usage in API response"
         exit 0
     fi
 
@@ -346,12 +346,12 @@ cmd_status() {
           otherColor: $otherColor
         }' 2>/dev/null || true)
     if ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"${detail_json:-}"; then
-        json_error "󰁨 …" "Could not parse Cursor usage"
+        json_error "…" "Could not parse Cursor usage"
         exit 0
     fi
 
     output=$(jq -cn \
-        --arg text "󰁨 ${cursor_pct}% / ${other_pct}%" \
+        --arg text "${cursor_pct}% / ${other_pct}%" \
         --argjson chips "$chips_json" \
         --argjson cursorPercent "$cursor_pct" \
         --argjson otherPercent "$other_pct" \

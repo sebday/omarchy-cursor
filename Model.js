@@ -141,10 +141,13 @@ function iconActive(data) {
 }
 
 function barTooltip(data, loading) {
-  if (loading) return "Cursor usage"
-  if (!data || !data.ok) return plain(data && data.error ? data.error : "Cursor usage")
-  if (data.text) return plain(String(data.text).replace(/^[^\s]+\s*/, "").trim() || data.text)
-  return barValue(data)
+  if (!data || !data.ok) {
+    if (loading) return "Cursor usage"
+    return plain(data && data.error ? data.error : "Cursor usage")
+  }
+  var cursor = parseInt(data.cursorPercent, 10)
+  if (isNaN(cursor)) cursor = 0
+  return plain(cursor + "% Cursor")
 }
 
 function barValue(data) {
