@@ -65,31 +65,50 @@ BarWidget {
   readonly property real openPanelIndicatorWidth: button.usageWidth
 
   function loadThemeColors(raw) {
-    var green = "#a6e3a1"
-    var blue = "#89b4fa"
-    var orange = "#fab387"
-    var red = "#f38ba8"
+    var green = ""
+    var blue = ""
+    var orange = ""
+    var yellow = ""
+    var red = ""
     var lines = String(raw || "").split("\n")
     for (var i = 0; i < lines.length; i++) {
-      var match = lines[i].match(/^\s*(green|blue|orange|red)\s*=\s*["']?(#[0-9A-Fa-f]{6})/)
+      var match = lines[i].match(/^\s*(green|blue|orange|yellow|red)\s*=\s*["']?(#[0-9A-Fa-f]{6})/)
       if (!match) continue
       if (match[1] === "green") green = match[2]
       else if (match[1] === "blue") blue = match[2]
       else if (match[1] === "orange") orange = match[2]
+      else if (match[1] === "yellow") yellow = match[2]
       else if (match[1] === "red") red = match[2]
     }
-    themeGreen = green
-    themeBlue = blue
-    themeOrange = orange
-    themeRed = red
+    themeGreen = green || "#a6e3a1"
+    themeBlue = blue || "#89b4fa"
+    themeOrange = orange || yellow || "#fab387"
+    themeRed = red || "#f38ba8"
   }
 
+  // colors.toml lives inside current/theme, and theme set deletes that
+  // directory. A watch on the file dies after the first switch. theme.name
+  // is rewritten in place on every switch, after the new colors are in place.
   property FileView themeColorsFile: FileView {
     path: Color.currentThemePath + "/colors.toml"
-    watchChanges: true
+    watchChanges: false
     printErrors: false
     onLoaded: root.loadThemeColors(text())
+  }
+
+  property FileView themeNameFile: FileView {
+    path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme.name"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.themeColorsFile.reload()
     onFileChanged: reload()
+  }
+
+  Connections {
+    target: Color
+    function onForegroundChanged() { root.themeColorsFile.reload() }
+    function onAccentChanged() { root.themeColorsFile.reload() }
+    function onBackgroundChanged() { root.themeColorsFile.reload() }
   }
 
   visible: valueText !== ""
