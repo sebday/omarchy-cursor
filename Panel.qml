@@ -65,6 +65,12 @@ Panel {
   readonly property color cycleColor: Model.cycleColor(detail, palette)
   readonly property color cursorColor: detail.cursorColor || palette[2]
   readonly property color otherColor: detail.otherColor || palette[4]
+  readonly property color themeGreen: hostWidget ? hostWidget.themeGreen : "#a6e3a1"
+  readonly property color themeBlue: hostWidget ? hostWidget.themeBlue : "#89b4fa"
+  readonly property color themeOrange: hostWidget ? hostWidget.themeOrange : "#fab387"
+  readonly property color themeRed: hostWidget ? hostWidget.themeRed : "#f38ba8"
+  readonly property color cursorGaugeColor: Model.usageStageColor(shownCursorPercent, themeGreen, themeBlue, themeOrange, themeRed)
+  readonly property color otherGaugeColor: Model.usageStageColor(shownOtherPercent, themeGreen, themeBlue, themeOrange, themeRed)
   readonly property int cycleDaysUsed: parseInt(data.cycleDaysUsed, 10) || 0
   readonly property int cycleDaysTotal: parseInt(data.cycleDaysTotal, 10) || 0
   readonly property bool iconActive: Model.iconActive(data)
@@ -368,9 +374,9 @@ Panel {
                 UsageGauge {
                   width: root.gaugeSize
                   percent: root.shownCursorPercent
-                  gaugeColor: root.cursorColor
+                  gaugeColor: root.cursorGaugeColor
                   title: "Cursor"
-                  titleColor: root.cursorColor
+                  titleColor: root.cursorGaugeColor
                   loading: root.loading
                   gaugeSize: root.gaugeSize
                   labelFontSize: root.gaugeLabelFont
@@ -383,9 +389,9 @@ Panel {
                 UsageGauge {
                   width: root.gaugeSize
                   percent: root.shownOtherPercent
-                  gaugeColor: root.otherColor
+                  gaugeColor: root.otherGaugeColor
                   title: "Other"
-                  titleColor: root.otherColor
+                  titleColor: root.otherGaugeColor
                   loading: root.loading
                   gaugeSize: root.gaugeSize
                   labelFontSize: root.gaugeLabelFont

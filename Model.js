@@ -129,6 +129,14 @@ function breakdownBarColor(palette, index) {
   return colors[((row % colors.length) + colors.length) % colors.length]
 }
 
+function usageStageColor(percent, green, blue, orange, red) {
+  var used = Number(percent) || 0
+  if (used >= 75) return red
+  if (used >= 50) return orange
+  if (used >= 25) return blue
+  return green
+}
+
 function cycleColor(detail, palette) {
   var colors = palette && palette.length ? palette : DEFAULT_HEATMAP_COLORS
   if (detail && detail.cursorColor) return String(detail.cursorColor)

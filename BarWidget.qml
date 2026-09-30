@@ -58,7 +58,39 @@ BarWidget {
   readonly property string valueText: panelLoader.item ? panelLoader.item.barValue : ""
   readonly property int cursorPercent: panelLoader.item ? (parseInt(panelLoader.item.data.cursorPercent, 10) || 0) : 0
   readonly property color cursorMark: panelLoader.item ? panelLoader.item.cursorColor : Color.accent
+  property color themeGreen: "#a6e3a1"
+  property color themeBlue: "#89b4fa"
+  property color themeOrange: "#fab387"
+  property color themeRed: "#f38ba8"
   readonly property real openPanelIndicatorWidth: button.usageWidth
+
+  function loadThemeColors(raw) {
+    var green = "#a6e3a1"
+    var blue = "#89b4fa"
+    var orange = "#fab387"
+    var red = "#f38ba8"
+    var lines = String(raw || "").split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      var match = lines[i].match(/^\s*(green|blue|orange|red)\s*=\s*["']?(#[0-9A-Fa-f]{6})/)
+      if (!match) continue
+      if (match[1] === "green") green = match[2]
+      else if (match[1] === "blue") blue = match[2]
+      else if (match[1] === "orange") orange = match[2]
+      else if (match[1] === "red") red = match[2]
+    }
+    themeGreen = green
+    themeBlue = blue
+    themeOrange = orange
+    themeRed = red
+  }
+
+  property FileView themeColorsFile: FileView {
+    path: Color.currentThemePath + "/colors.toml"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.loadThemeColors(text())
+    onFileChanged: reload()
+  }
 
   visible: valueText !== ""
   implicitWidth: button.implicitWidth
@@ -119,6 +151,10 @@ BarWidget {
       percent: root.cursorPercent
       mark: button.active && button.useActiveColor ? button.activeColor : root.cursorMark
       alert: button.active && button.useActiveColor
+      themeGreen: root.themeGreen
+      themeBlue: root.themeBlue
+      themeOrange: root.themeOrange
+      themeRed: root.themeRed
       diameter: Style.bar.iconFont
     }
 
@@ -143,9 +179,13 @@ BarWidget {
     property int percent: 0
     property color mark: Color.foreground
     property bool alert: false
+    property color themeGreen: "#a6e3a1"
+    property color themeBlue: "#89b4fa"
+    property color themeOrange: "#fab387"
+    property color themeRed: "#f38ba8"
     property int diameter: Style.bar.iconFont
-    // Shift the mark toward magenta so the used arc isn't the same cyan as the digits.
-    readonly property color used: Qt.hsla((mark.hslHue + 0.42) % 1, Math.max(0.55, mark.hslSaturation), Math.min(0.72, Math.max(0.58, mark.hslLightness)), 1)
+    readonly property color stage: Model.usageStageColor(percent, themeGreen, themeBlue, themeOrange, themeRed)
+    readonly property color ink: alert ? mark : stage
     readonly property real stroke: Math.max(2, Style.space(2))
 
     width: diameter
@@ -156,7 +196,7 @@ BarWidget {
     Rectangle {
       anchors.fill: parent
       radius: width / 2
-      color: Qt.rgba(circle.mark.r, circle.mark.g, circle.mark.b, 0.16)
+      color: Qt.rgba(circle.ink.r, circle.ink.g, circle.ink.b, 0.16)
     }
 
     Canvas {
@@ -176,14 +216,14 @@ BarWidget {
 
         ctx.beginPath()
         ctx.arc(cx, cy, r, 0, Math.PI * 2)
-        ctx.strokeStyle = circle.alert ? circle.mark : Qt.rgba(circle.mark.r, circle.mark.g, circle.mark.b, 0.35)
+        ctx.strokeStyle = circle.alert ? circle.ink : Qt.rgba(circle.ink.r, circle.ink.g, circle.ink.b, 0.35)
         ctx.stroke()
 
         var sweep = circle.alert ? 0 : Math.max(0, Math.min(100, circle.percent)) / 100
         if (sweep <= 0) return
         ctx.beginPath()
         ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + sweep * Math.PI * 2)
-        ctx.strokeStyle = circle.used
+        ctx.strokeStyle = circle.stage
         ctx.stroke()
       }
 
@@ -195,9 +235,9 @@ BarWidget {
     Connections {
       target: circle
       function onPercentChanged() { ring.requestPaint() }
-      function onMarkChanged() { ring.requestPaint() }
+      function onInkChanged() { ring.requestPaint() }
+      function onStageChanged() { ring.requestPaint() }
       function onAlertChanged() { ring.requestPaint() }
-      function onUsedChanged() { ring.requestPaint() }
     }
   }
 }
