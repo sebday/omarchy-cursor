@@ -36,10 +36,6 @@ omarchy-shell evo.cursor refresh
 omarchy-shell shell toggle evo.cursor
 ```
 
-## License
-
-MIT.
-
 ## Removing
 
 ```bash
