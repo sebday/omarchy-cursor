@@ -61,6 +61,7 @@ Panel {
   readonly property bool isError: !hasData && data.error !== ""
   readonly property bool showTokens: hasData && Model.showTokens(detail)
   readonly property bool hasModelDetails: hasData && Model.hasModelDetails(detail)
+  property bool breakdownOpen: false
   readonly property var modelSplit: Array.isArray(detail.modelSplit) ? detail.modelSplit : []
   readonly property color cycleColor: Model.cycleColor(detail, palette)
   readonly property color cursorColor: detail.cursorColor || palette[2]
@@ -173,6 +174,7 @@ Panel {
   Component.onCompleted: refresh()
 
   onOpenedChanged: if (opened) {
+    breakdownOpen = false
     shownCursorPercent = 0
     shownOtherPercent = 0
     refresh()
@@ -270,7 +272,7 @@ Panel {
             iconComponent: Component {
               CursorIcon {
                 iconSize: Style.font.display
-                color: root.iconError ? root.urgent : root.cursorColor
+                color: root.foreground
               }
             }
           }
@@ -306,7 +308,25 @@ Panel {
           Row {
             visible: !root.isError && (root.showTokens || root.cycleDaysTotal > 0)
             width: parent.width
-            spacing: Style.space(8)
+            spacing: Style.space(16)
+
+            PanelStatTile {
+              visible: root.cycleDaysTotal > 0
+              width: root.usageStatTileCount > 0
+                ? (parent.width - parent.spacing * (root.usageStatTileCount - 1)) / root.usageStatTileCount
+                : parent.width
+              loading: root.loading
+              value: root.loading ? "…" : String(Model.cycleDaysLeft(root.data))
+              cycleSuffix: root.loading ? "" : (Model.cycleDaysLeft(root.data) === 1 ? "day left" : "days left")
+              label: ""
+              valueColor: root.cycleColor
+              foreground: root.foreground
+              dim: root.dim
+              fontFamily: root.fontFamily
+              showCycleChart: true
+              cycleDaysTotal: root.cycleDaysTotal
+              cycleDaysUsed: root.cycleDaysUsed
+            }
 
             PanelStatTile {
               visible: root.showTokens
@@ -327,33 +347,13 @@ Panel {
                 ? (parent.width - parent.spacing * (root.usageStatTileCount - 1)) / root.usageStatTileCount
                 : parent.width
               loading: root.loading
-              value: Model.formatTokens(root.detail.tokensToday || 0)
+              value: Model.formatTokensNearestM(root.detail.tokensToday || 0)
               label: "today"
-              valueColor: root.accent
               foreground: root.foreground
               dim: root.dim
               fontFamily: root.fontFamily
             }
 
-            PanelStatTile {
-              visible: root.cycleDaysTotal > 0
-              width: root.usageStatTileCount > 0
-                ? (parent.width - parent.spacing * (root.usageStatTileCount - 1)) / root.usageStatTileCount
-                : parent.width
-              loading: root.loading
-              value: root.loading ? "…" : String(Model.cycleDaysLeft(root.data))
-              cycleSuffix: root.loading ? "" : (Model.cycleDaysLeft(root.data) === 1 ? "day left" : "days left")
-              label: ""
-              valueColor: root.cycleColor
-              foreground: root.foreground
-              dim: root.dim
-              fontFamily: root.fontFamily
-              showCycleChart: true
-              cycleDaysTotal: root.cycleDaysTotal
-              cycleDaysUsed: root.cycleDaysUsed
-              accent: root.accent
-              palette: root.palette
-            }
           }
 
           Item {
@@ -403,95 +403,125 @@ Panel {
             }
           }
 
-          PanelSectionHeader {
+          Item {
+            id: breakdownHeader
             visible: !root.isError && root.hasModelDetails
             width: parent.width
-            text: "BREAKDOWN"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-          }
+            height: breakdownTitle.implicitHeight
 
-          Repeater {
-            model: root.modelSplit
-
-            Column {
-              required property var modelData
-              required property int index
-              width: column.width
-              spacing: Style.spacing.xs
-              visible: !root.isError
-
-              readonly property color barColor: Model.breakdownBarColor(root.palette, index)
-
-              Item {
-                width: parent.width
-                height: 4
-
-                Rectangle {
-                  anchors.fill: parent
-                  radius: Style.cornerRadius
-                  color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
-                }
-
-                Rectangle {
-                  height: parent.height
-                  width: parent.width * Math.max(0, Math.min(1, modelData.percent / 100))
-                  radius: Style.cornerRadius
-                  color: barColor
-                  opacity: 0.85
-                }
-              }
-
-              Row {
-                width: parent.width
-                spacing: Style.space(12)
-
-                Text {
-                  textFormat: Text.PlainText
-                  width: parent.width - detailText.implicitWidth - parent.spacing
-                  text: Model.modelLabel(modelData.model)
-                  color: root.palette[0]
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                  elide: Text.ElideRight
-                }
-
-                Text {
-                  textFormat: Text.PlainText
-                  id: detailText
-                  text: root.loading
-                    ? "…"
-                    : Math.round(modelData.percent) + "% · "
-                      + Model.formatTokens(modelData.tokens)
-                  color: root.palette[0]
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                }
-              }
-            }
-          }
-
-          Row {
-            width: parent.width
-            visible: !root.isError && root.detail.onDemand === true
-            spacing: Style.spacing.sm
-
-            Text {
-              textFormat: Text.PlainText
-              text: "On-demand usage enabled"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-            }
-
-            StatusPill {
-              visible: root.detail.onDemandUsed > 0
-              text: Number(root.detail.onDemandUsed).toLocaleString() + " used"
-              textColor: root.accent
+            PanelSectionHeader {
+              id: breakdownTitle
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              text: "BREAKDOWN"
               foreground: root.foreground
               fontFamily: root.fontFamily
+            }
+
+            Text {
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: root.breakdownOpen ? "−" : "+"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.bold: true
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.breakdownOpen = !root.breakdownOpen
+            }
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(12)
+            visible: breakdownHeader.visible && root.breakdownOpen
+
+            Repeater {
+              model: root.modelSplit
+
+              Column {
+                required property var modelData
+                required property int index
+                width: column.width
+                spacing: Style.spacing.xs
+
+                readonly property color barColor: Model.breakdownBarColor(root.palette, index)
+
+                Item {
+                  width: parent.width
+                  height: 4
+
+                  Rectangle {
+                    anchors.fill: parent
+                    radius: Style.cornerRadius
+                    color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+                  }
+
+                  Rectangle {
+                    height: parent.height
+                    width: parent.width * Math.max(0, Math.min(1, modelData.percent / 100))
+                    radius: Style.cornerRadius
+                    color: barColor
+                    opacity: 0.85
+                  }
+                }
+
+                Row {
+                  width: parent.width
+                  spacing: Style.space(12)
+
+                  Text {
+                    textFormat: Text.PlainText
+                    width: parent.width - detailText.implicitWidth - parent.spacing
+                    text: Model.modelLabel(modelData.model)
+                    color: root.palette[0]
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.bold: true
+                    elide: Text.ElideRight
+                  }
+
+                  Text {
+                    textFormat: Text.PlainText
+                    id: detailText
+                    text: root.loading
+                      ? "…"
+                      : Math.round(modelData.percent) + "% · "
+                        + Model.formatTokens(modelData.tokens)
+                    color: root.palette[0]
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.bold: true
+                  }
+                }
+              }
+            }
+
+            Row {
+              width: parent.width
+              visible: root.detail.onDemand === true
+              spacing: Style.spacing.sm
+
+              Text {
+                textFormat: Text.PlainText
+                text: "On-demand usage enabled"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+              }
+
+              StatusPill {
+                visible: root.detail.onDemandUsed > 0
+                text: Number(root.detail.onDemandUsed).toLocaleString() + " used"
+                textColor: root.accent
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
             }
           }
         }
@@ -636,12 +666,12 @@ Panel {
     }
   }
 
-  component PanelStatTile: BorderSurface {
+  component PanelStatTile: Item {
     id: tileRoot
 
     property string value: ""
     property string label: ""
-    property color valueColor: Color.accent
+    property color valueColor: foreground
     property color foreground: Color.foreground
     property color dim: Qt.darker(foreground, 1.4)
     property string fontFamily: Style.font.family
@@ -650,115 +680,165 @@ Panel {
     property string cycleSuffix: ""
     property int cycleDaysTotal: 0
     property int cycleDaysUsed: 0
-    property color accent: Color.accent
-    property var palette: []
 
     readonly property string displayValue: loading ? "…" : value
-
-    readonly property color cycleTrackColor: palette && palette.length ? palette[0] : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.22)
+    readonly property string legendText: label !== "" ? label : cycleSuffix
+    readonly property color frameColor: Qt.rgba(dim.r, dim.g, dim.b, 0.9)
     readonly property real cycleFill: cycleDaysTotal > 0
       ? Math.max(0, Math.min(1, cycleDaysUsed / cycleDaysTotal))
       : 0
 
-    readonly property real cycleChartPad: Math.max(0, cycleLabelMetric.implicitHeight - Style.space(4) - Style.space(3))
+    implicitWidth: Style.space(108)
+    implicitHeight: Style.font.heading + Style.space(56)
 
-    Text {
-      textFormat: Text.PlainText
-      id: cycleLabelMetric
-      visible: false
-      text: "today"
-      font.family: tileRoot.fontFamily
-      font.pixelSize: Style.font.caption
-      font.bold: true
+    Rectangle {
+      id: frame
+      anchors.fill: parent
+      anchors.topMargin: legendChip.visible ? legendChip.height / 2 : 0
+      color: "transparent"
+      radius: Style.space(8)
+      border.width: tileRoot.showCycleChart ? 0 : 1
+      border.color: tileRoot.frameColor
+      antialiasing: true
     }
 
-    implicitHeight: tileColumn.implicitHeight + Style.spacing.lg * 2
-    color: Color.popups.background
-    borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, 1)
-    radius: Style.cornerRadius
+    Canvas {
+      id: progressBorder
+      anchors.fill: frame
+      visible: tileRoot.showCycleChart
+      antialiasing: true
 
-    Column {
-      id: tileColumn
-      anchors.centerIn: parent
-      width: parent.width - Style.spacing.lg * 2
-      spacing: Style.spacing.labelGap
+      onPaint: {
+        var ctx = getContext("2d")
+        if (ctx.reset) ctx.reset()
+        ctx.clearRect(0, 0, width, height)
+        var lw = 2
+        var radius = Math.min(Style.space(8), Math.max(0, (Math.min(width, height) - lw) / 2))
+        var left = lw / 2
+        var top = lw / 2
+        var w = Math.max(0, width - lw)
+        var h = Math.max(0, height - lw)
+        if (w < 4 || h < 4) return
 
-      Text {
-        textFormat: Text.PlainText
-        visible: !tileRoot.showCycleChart
-        width: parent.width
-        text: tileRoot.displayValue
-        color: tileRoot.valueColor
-        font.family: tileRoot.fontFamily
-        font.pixelSize: Style.font.title
-        font.bold: true
-        horizontalAlignment: Text.AlignHCenter
-        elide: Text.ElideRight
-      }
+        var right = left + w
+        var bottom = top + h
+        var topHalf = Math.max(0, w / 2 - radius)
+        var side = Math.max(0, h - 2 * radius)
+        var across = Math.max(0, w - 2 * radius)
+        var sweep = Math.PI / 2
 
-      Row {
-        visible: tileRoot.showCycleChart
-        anchors.horizontalCenter: parent.horizontalCenter
-        spacing: Style.spacing.xs
+        ctx.lineWidth = lw
+        ctx.lineJoin = "round"
+        ctx.lineCap = "butt"
 
-        Text {
-          textFormat: Text.PlainText
-          text: tileRoot.displayValue
-          color: tileRoot.valueColor
-          font.family: tileRoot.fontFamily
-          font.pixelSize: Style.font.title
-          font.bold: true
+        ctx.beginPath()
+        ctx.moveTo(left + w / 2, top)
+        ctx.lineTo(right - radius, top)
+        ctx.arc(right - radius, top + radius, radius, -sweep, 0)
+        ctx.lineTo(right, bottom - radius)
+        ctx.arc(right - radius, bottom - radius, radius, 0, sweep)
+        ctx.lineTo(left + radius, bottom)
+        ctx.arc(left + radius, bottom - radius, radius, sweep, Math.PI)
+        ctx.lineTo(left, top + radius)
+        ctx.arc(left + radius, top + radius, radius, Math.PI, Math.PI + sweep)
+        ctx.lineTo(left + w / 2, top)
+        ctx.strokeStyle = tileRoot.frameColor
+        ctx.stroke()
+
+        var fill = Math.max(0, Math.min(1, tileRoot.cycleFill))
+        if (fill <= 0) return
+
+        var remain = (topHalf * 2 + side * 2 + across + sweep * radius * 4) * fill
+        ctx.strokeStyle = tileRoot.valueColor
+        ctx.lineCap = "round"
+
+        function paintLine(x1, y1, x2, y2, len) {
+          if (remain <= 0 || len <= 0) return
+          var portion = Math.min(1, remain / len)
+          remain -= len * portion
+          ctx.beginPath()
+          ctx.moveTo(x1, y1)
+          ctx.lineTo(x1 + (x2 - x1) * portion, y1 + (y2 - y1) * portion)
+          ctx.stroke()
         }
 
-        Text {
-          textFormat: Text.PlainText
-          visible: !tileRoot.loading && tileRoot.cycleSuffix !== ""
-          text: tileRoot.cycleSuffix
-          color: tileRoot.valueColor
-          font.family: tileRoot.fontFamily
-          font.pixelSize: Style.font.caption
-          font.bold: true
+        function paintArc(cx, cy, a0, delta) {
+          var len = Math.abs(delta) * radius
+          if (remain <= 0 || len <= 0) return
+          var portion = Math.min(1, remain / len)
+          remain -= len * portion
+          ctx.beginPath()
+          ctx.arc(cx, cy, radius, a0, a0 + delta * portion, delta < 0)
+          ctx.stroke()
         }
+
+        paintLine(left + w / 2, top, left + radius, top, topHalf)
+        paintArc(left + radius, top + radius, -sweep, -sweep)
+        paintLine(left, top + radius, left, bottom - radius, side)
+        paintArc(left + radius, bottom - radius, Math.PI, -sweep)
+        paintLine(left + radius, bottom, right - radius, bottom, across)
+        paintArc(right - radius, bottom - radius, sweep, -sweep)
+        paintLine(right, bottom - radius, right, top + radius, side)
+        paintArc(right - radius, top + radius, 0, -sweep)
+        paintLine(right - radius, top, left + w / 2, top, topHalf)
+      }
+
+      onWidthChanged: requestPaint()
+      onHeightChanged: requestPaint()
+      onVisibleChanged: if (visible) requestPaint()
+      Connections {
+        target: tileRoot
+        function onCycleFillChanged() { progressBorder.requestPaint() }
+        function onValueColorChanged() { progressBorder.requestPaint() }
+        function onFrameColorChanged() { progressBorder.requestPaint() }
+      }
+      Component.onCompleted: requestPaint()
+    }
+
+    Item {
+      id: legendChip
+      x: Style.space(14)
+      y: 0
+      width: legendTextItem.implicitWidth + Style.space(8)
+      height: Math.max(1, legendTextItem.implicitHeight)
+      visible: tileRoot.legendText !== ""
+
+      Rectangle {
+        anchors.fill: parent
+        color: Color.popups.background
       }
 
       Text {
+        id: legendTextItem
+        x: Style.space(4)
+        anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
-        visible: tileRoot.label !== ""
-        width: parent.width
-        text: tileRoot.label
+        text: tileRoot.legendText
         color: tileRoot.dim
         font.family: tileRoot.fontFamily
         font.pixelSize: Style.font.caption
+        font.bold: true
+      }
+    }
+
+    Item {
+      anchors.fill: frame
+      anchors.leftMargin: Style.space(14)
+      anchors.rightMargin: Style.space(14)
+      anchors.topMargin: Style.space(8)
+      anchors.bottomMargin: Style.space(8)
+
+      Text {
+        anchors.centerIn: parent
+        width: parent.width
+        textFormat: Text.PlainText
+        text: tileRoot.displayValue
+        color: tileRoot.valueColor
+        font.family: tileRoot.fontFamily
+        font.pixelSize: Style.font.display
+        font.bold: true
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
-      }
-
-      Item {
-        id: cycleChart
-        width: parent.width
-        height: tileRoot.showCycleChart
-          ? Style.space(4) + tileRoot.cycleChartPad + Style.space(3)
-          : Style.space(4)
-        visible: tileRoot.showCycleChart && tileRoot.cycleDaysTotal > 0
-
-        Rectangle {
-          anchors.bottom: parent.bottom
-          anchors.bottomMargin: Style.space(3)
-          width: parent.width
-          height: Style.space(4)
-          radius: height / 2
-          color: tileRoot.cycleTrackColor
-          opacity: 0.35
-        }
-
-        Rectangle {
-          anchors.bottom: parent.bottom
-          anchors.bottomMargin: Style.space(3)
-          height: Style.space(4)
-          width: parent.width * tileRoot.cycleFill
-          radius: height / 2
-          color: tileRoot.valueColor
-        }
       }
     }
   }

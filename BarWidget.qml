@@ -56,8 +56,6 @@ BarWidget {
   readonly property bool iconMuted: panelLoader.item ? panelLoader.item.iconMuted === true : false
   readonly property string tooltip: panelLoader.item ? panelLoader.item.barTooltip : "Cursor usage"
   readonly property string valueText: panelLoader.item ? panelLoader.item.barValue : ""
-  readonly property int cursorPercent: panelLoader.item ? (parseInt(panelLoader.item.data.cursorPercent, 10) || 0) : 0
-  readonly property color cursorMark: panelLoader.item ? panelLoader.item.cursorColor : Color.accent
   property color themeGreen: "#a6e3a1"
   property color themeBlue: "#89b4fa"
   property color themeOrange: "#fab387"
@@ -166,15 +164,8 @@ BarWidget {
     UsageCircle {
       id: contentRow
       anchors.centerIn: parent
-      anchors.horizontalCenterOffset: 1
-      percent: root.cursorPercent
-      mark: button.active && button.useActiveColor ? button.activeColor : root.cursorMark
-      alert: button.active && button.useActiveColor
-      themeGreen: root.themeGreen
-      themeBlue: root.themeBlue
-      themeOrange: root.themeOrange
-      themeRed: root.themeRed
-      diameter: Style.bar.iconFont
+      fontFamily: button.fontFamily
+      color: button.foreground
     }
 
     SequentialAnimation on pulseOpacity {
@@ -195,68 +186,21 @@ BarWidget {
   component UsageCircle: Item {
     id: circle
 
-    property int percent: 0
-    property color mark: Color.foreground
-    property bool alert: false
-    property color themeGreen: "#a6e3a1"
-    property color themeBlue: "#89b4fa"
-    property color themeOrange: "#fab387"
-    property color themeRed: "#f38ba8"
-    property int diameter: Style.bar.iconFont
-    readonly property color stage: Model.usageStageColor(percent, themeGreen, themeBlue, themeOrange, themeRed)
-    readonly property color ink: alert ? mark : stage
-    readonly property real stroke: Math.max(2, Style.space(2))
+    property color color: Color.foreground
+    property string fontFamily: Style.font.family
+    readonly property int glyphBox: Style.bar.iconCanvas
 
-    width: diameter
-    height: diameter
-    implicitWidth: diameter
-    implicitHeight: diameter
+    width: glyphBox
+    height: glyphBox
+    implicitWidth: glyphBox
+    implicitHeight: glyphBox
 
-    Rectangle {
+    OpticalGlyph {
       anchors.fill: parent
-      radius: width / 2
-      color: Qt.rgba(circle.ink.r, circle.ink.g, circle.ink.b, 0.16)
-    }
-
-    Canvas {
-      id: ring
-      anchors.fill: parent
-      antialiasing: true
-
-      onPaint: {
-        var ctx = getContext("2d")
-        ctx.reset()
-        var stroke = circle.stroke
-        var r = Math.max(1, (width - stroke) / 2)
-        var cx = width / 2
-        var cy = height / 2
-        ctx.lineWidth = stroke
-        ctx.lineCap = "butt"
-
-        ctx.beginPath()
-        ctx.arc(cx, cy, r, 0, Math.PI * 2)
-        ctx.strokeStyle = circle.alert ? circle.ink : Qt.rgba(circle.ink.r, circle.ink.g, circle.ink.b, 0.35)
-        ctx.stroke()
-
-        var sweep = circle.alert ? 0 : Math.max(0, Math.min(100, circle.percent)) / 100
-        if (sweep <= 0) return
-        ctx.beginPath()
-        ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + sweep * Math.PI * 2)
-        ctx.strokeStyle = circle.stage
-        ctx.stroke()
-      }
-
-      onWidthChanged: requestPaint()
-      onHeightChanged: requestPaint()
-      Component.onCompleted: requestPaint()
-    }
-
-    Connections {
-      target: circle
-      function onPercentChanged() { ring.requestPaint() }
-      function onInkChanged() { ring.requestPaint() }
-      function onStageChanged() { ring.requestPaint() }
-      function onAlertChanged() { ring.requestPaint() }
+      text: "󱚣"
+      fontFamily: circle.fontFamily
+      fontSize: Style.bar.iconFont
+      color: circle.color
     }
   }
 }

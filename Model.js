@@ -101,6 +101,10 @@ function formatTokens(n) {
   return String(Math.round(v))
 }
 
+function formatTokensNearestM(n) {
+  return Math.round((Number(n) || 0) / 1e6) + "M"
+}
+
 function modelLabel(name) {
   return String(name || "")
     .replace(/^cursor-/, "")
